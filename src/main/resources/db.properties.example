@@ -1,0 +1,10 @@
+# ==============================================================================
+# SkillSwap Database Configuration Example
+# Copy this file to 'src/main/resources/db.properties' or place 'db.properties'
+# in the project root directory, and fill in your actual MySQL credentials.
+# Note: 'db.properties' is ignored by Git to protect your password.
+# ==============================================================================
+
+db.url=jdbc:mysql://localhost:3306/skillswap?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+db.user=root
+db.password=Kumar@221016

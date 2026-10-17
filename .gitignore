@@ -1,0 +1,21 @@
+# Compiled class files
+target/
+*.class
+
+# Log files
+*.log
+
+# Sensitive credentials & local configurations
+db.properties
+src/main/resources/db.properties
+
+# Visual Studio Code & IDE files
+.vscode/
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# OS generated files
+Thumbs.db
+.DS_Store
