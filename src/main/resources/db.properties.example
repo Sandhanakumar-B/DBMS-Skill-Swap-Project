@@ -7,4 +7,4 @@
 
 db.url=jdbc:mysql://localhost:3306/skillswap?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
 db.user=root
-db.password=Kumar@221016
+db.password=YOUR_MYSQL_PASSWORD_HERE

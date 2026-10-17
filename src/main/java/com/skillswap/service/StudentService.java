@@ -45,8 +45,20 @@ public class StudentService {
             throw new IllegalArgumentException("Student name cannot be blank.");
         }
 
+        if (cleanName.length() > 100) {
+            throw new IllegalArgumentException("Student name cannot exceed 100 characters.");
+        }
+
         if (!InputValidator.isValidEmail(cleanEmail)) {
             throw new IllegalArgumentException("Invalid email format: '" + cleanEmail + "'. Please enter a valid email address.");
+        }
+
+        if (cleanEmail.length() > 150) {
+            throw new IllegalArgumentException("Email address cannot exceed 150 characters.");
+        }
+
+        if (cleanContact.length() > 100) {
+            throw new IllegalArgumentException("Contact info cannot exceed 100 characters.");
         }
 
         if (studentDAO.emailExists(cleanEmail)) {

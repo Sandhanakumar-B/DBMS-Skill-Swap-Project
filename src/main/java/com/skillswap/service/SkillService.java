@@ -45,6 +45,10 @@ public class SkillService {
             throw new IllegalArgumentException("Skill name cannot be blank.");
         }
 
+        if (normalizedName.length() > 100) {
+            throw new IllegalArgumentException("Skill name cannot exceed 100 characters.");
+        }
+
         if (skillType == null) {
             throw new IllegalArgumentException("Skill type must be specified (TEACH or LEARN).");
         }
@@ -112,6 +116,10 @@ public class SkillService {
         String normalizedName = SkillNormalizer.normalize(newRawName);
         if (!InputValidator.isNotBlank(normalizedName)) {
             throw new IllegalArgumentException("Skill name cannot be blank.");
+        }
+
+        if (normalizedName.length() > 100) {
+            throw new IllegalArgumentException("Skill name cannot exceed 100 characters.");
         }
 
         existing.setSkillName(normalizedName);
