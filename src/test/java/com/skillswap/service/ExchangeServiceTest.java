@@ -32,6 +32,7 @@ class ExchangeServiceTest {
 
     private Student studentA;
     private Student studentB;
+    private Student studentC; // Third party
     private Skill studentATeachJava;
     private Skill studentALearnUI;
     private Skill studentBTeachUI;
@@ -48,7 +49,7 @@ class ExchangeServiceTest {
         requestDAO = new SkillExchangeRequestDAO();
         exchangeService = new ExchangeService(requestDAO, studentDAO, skillDAO);
 
-        // Create Student A
+        // Student A
         studentA = studentDAO.insertStudent(new Student(
                 "Alice Exchanger",
                 "alice.exch." + System.currentTimeMillis() + "@test.edu",
@@ -56,13 +57,21 @@ class ExchangeServiceTest {
         ));
         createdStudentIds.add(studentA.getStudentId());
 
-        // Create Student B
+        // Student B
         studentB = studentDAO.insertStudent(new Student(
                 "Bob Exchanger",
                 "bob.exch." + System.currentTimeMillis() + "@test.edu",
                 "222"
         ));
         createdStudentIds.add(studentB.getStudentId());
+
+        // Student C (Third-party)
+        studentC = studentDAO.insertStudent(new Student(
+                "Charlie ThirdParty",
+                "charlie.exch." + System.currentTimeMillis() + "@test.edu",
+                "333"
+        ));
+        createdStudentIds.add(studentC.getStudentId());
 
         // Student A: TEACH Java, LEARN UI/UX
         studentATeachJava = skillDAO.insertSkill(new Skill(
@@ -126,7 +135,6 @@ class ExchangeServiceTest {
         assertEquals(RequestStatus.PENDING, req.getStatus());
         createdRequestIds.add(req.getRequestId());
 
-        // Verify incoming and outgoing lists
         List<SkillExchangeRequest> incoming = exchangeService.getIncomingRequests(studentB.getStudentId());
         assertEquals(1, incoming.size());
         assertEquals(req.getRequestId(), incoming.get(0).getRequestId());
@@ -152,12 +160,11 @@ class ExchangeServiceTest {
     @Test
     @DisplayName("Should reject offered skill that does not belong to requester")
     void testRejectOfferedSkillNotOwned() {
-        // studentA tries to offer studentB's skill
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
                 exchangeService.createRequest(
                         studentA.getStudentId(),
                         studentB.getStudentId(),
-                        studentBTeachUI.getSkillId(), // Not owned by A!
+                        studentBTeachUI.getSkillId(),
                         studentBTeachUI.getSkillId()
                 ));
         assertTrue(ex.getMessage().contains("does not belong to you"));
@@ -166,12 +173,11 @@ class ExchangeServiceTest {
     @Test
     @DisplayName("Should reject offered skill of type LEARN (must be TEACH)")
     void testRejectOfferedSkillNotTeachType() {
-        // studentA tries to offer a LEARN skill
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
                 exchangeService.createRequest(
                         studentA.getStudentId(),
                         studentB.getStudentId(),
-                        studentALearnUI.getSkillId(), // LEARN type!
+                        studentALearnUI.getSkillId(),
                         studentBTeachUI.getSkillId()
                 ));
         assertTrue(ex.getMessage().contains("can only offer skills that you can TEACH"));
@@ -180,13 +186,12 @@ class ExchangeServiceTest {
     @Test
     @DisplayName("Should reject wanted skill of type LEARN (receiver must TEACH it)")
     void testRejectWantedSkillNotTeachType() {
-        // studentA asks for studentB's LEARN skill
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
                 exchangeService.createRequest(
                         studentA.getStudentId(),
                         studentB.getStudentId(),
                         studentATeachJava.getSkillId(),
-                        studentBLearnJava.getSkillId() // receiver's LEARN skill!
+                        studentBLearnJava.getSkillId()
                 ));
         assertTrue(ex.getMessage().contains("receiver can TEACH"));
     }
@@ -202,7 +207,6 @@ class ExchangeServiceTest {
         );
         createdRequestIds.add(req.getRequestId());
 
-        // Attempting to send identical request while first is still pending
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
                 exchangeService.createRequest(
                         studentA.getStudentId(),
@@ -211,5 +215,102 @@ class ExchangeServiceTest {
                         studentBTeachUI.getSkillId()
                 ));
         assertTrue(ex.getMessage().contains("already pending or accepted"));
+    }
+
+    @Test
+    @DisplayName("Receiver should accept incoming request successfully")
+    void testAcceptIncomingRequest() throws SQLException {
+        SkillExchangeRequest req = exchangeService.createRequest(
+                studentA.getStudentId(), studentB.getStudentId(),
+                studentATeachJava.getSkillId(), studentBTeachUI.getSkillId()
+        );
+        createdRequestIds.add(req.getRequestId());
+
+        SkillExchangeRequest accepted = exchangeService.acceptRequest(studentB.getStudentId(), req.getRequestId());
+        assertEquals(RequestStatus.ACCEPTED, accepted.getStatus());
+    }
+
+    @Test
+    @DisplayName("Reject accept attempt by unauthorized student")
+    void testAcceptUnauthorized() throws SQLException {
+        SkillExchangeRequest req = exchangeService.createRequest(
+                studentA.getStudentId(), studentB.getStudentId(),
+                studentATeachJava.getSkillId(), studentBTeachUI.getSkillId()
+        );
+        createdRequestIds.add(req.getRequestId());
+
+        // Requester (studentA) cannot accept their own request
+        SecurityException ex1 = assertThrows(SecurityException.class, () ->
+                exchangeService.acceptRequest(studentA.getStudentId(), req.getRequestId()));
+        assertTrue(ex1.getMessage().contains("Only the receiver"));
+
+        // Third-party (studentC) cannot accept
+        SecurityException ex2 = assertThrows(SecurityException.class, () ->
+                exchangeService.acceptRequest(studentC.getStudentId(), req.getRequestId()));
+        assertTrue(ex2.getMessage().contains("Only the receiver"));
+    }
+
+    @Test
+    @DisplayName("Receiver should reject incoming request successfully")
+    void testRejectIncomingRequest() throws SQLException {
+        SkillExchangeRequest req = exchangeService.createRequest(
+                studentA.getStudentId(), studentB.getStudentId(),
+                studentATeachJava.getSkillId(), studentBTeachUI.getSkillId()
+        );
+        createdRequestIds.add(req.getRequestId());
+
+        SkillExchangeRequest rejected = exchangeService.rejectRequest(studentB.getStudentId(), req.getRequestId());
+        assertEquals(RequestStatus.REJECTED, rejected.getStatus());
+
+        // Cannot accept a rejected request
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+                exchangeService.acceptRequest(studentB.getStudentId(), req.getRequestId()));
+        assertTrue(ex.getMessage().contains("Only PENDING requests"));
+    }
+
+    @Test
+    @DisplayName("Requester should cancel PENDING or ACCEPTED request")
+    void testCancelRequest() throws SQLException {
+        SkillExchangeRequest req = exchangeService.createRequest(
+                studentA.getStudentId(), studentB.getStudentId(),
+                studentATeachJava.getSkillId(), studentBTeachUI.getSkillId()
+        );
+        createdRequestIds.add(req.getRequestId());
+
+        // Alice cancels her request
+        SkillExchangeRequest cancelled = exchangeService.cancelRequest(studentA.getStudentId(), req.getRequestId());
+        assertEquals(RequestStatus.CANCELLED, cancelled.getStatus());
+
+        // Cannot cancel again
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+                exchangeService.cancelRequest(studentA.getStudentId(), req.getRequestId()));
+        assertTrue(ex.getMessage().contains("Only PENDING or ACCEPTED"));
+    }
+
+    @Test
+    @DisplayName("Participant should complete an ACCEPTED exchange")
+    void testCompleteExchange() throws SQLException {
+        SkillExchangeRequest req = exchangeService.createRequest(
+                studentA.getStudentId(), studentB.getStudentId(),
+                studentATeachJava.getSkillId(), studentBTeachUI.getSkillId()
+        );
+        createdRequestIds.add(req.getRequestId());
+
+        // Attempting to complete before acceptance must fail
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+                exchangeService.completeExchange(studentA.getStudentId(), req.getRequestId()));
+        assertTrue(ex.getMessage().contains("Only ACCEPTED requests"));
+
+        // Bob accepts
+        exchangeService.acceptRequest(studentB.getStudentId(), req.getRequestId());
+
+        // Alice marks complete
+        SkillExchangeRequest completed = exchangeService.completeExchange(studentA.getStudentId(), req.getRequestId());
+        assertEquals(RequestStatus.COMPLETED, completed.getStatus());
+
+        // Cannot cancel a completed request
+        IllegalStateException exCancel = assertThrows(IllegalStateException.class, () ->
+                exchangeService.cancelRequest(studentA.getStudentId(), req.getRequestId()));
+        assertTrue(exCancel.getMessage().contains("Only PENDING or ACCEPTED"));
     }
 }

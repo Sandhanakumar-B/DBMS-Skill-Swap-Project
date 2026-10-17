@@ -15,14 +15,14 @@ import java.util.List;
 
 /**
  * SkillSwap - Student Skill Exchange Platform
- * Phase 5: Exchange Request Creation and Validation.
+ * Phase 6: Request Lifecycle Management (Accept, Reject, Cancel, Complete).
  */
 public class Main {
     public static void main(String[] args) {
         System.out.println("==================================================");
         System.out.println("       SKILLSWAP - STUDENT SKILL EXCHANGE         ");
         System.out.println("==================================================");
-        System.out.println("Phase 5: Exchange Request Creation & Ownership Rules");
+        System.out.println("Phase 6: Request Lifecycle (Accept, Reject, Cancel, Complete)");
         System.out.println("--------------------------------------------------");
 
         if (!DatabaseConnection.testConnection()) {
@@ -35,21 +35,20 @@ public class Main {
         ExchangeService exchangeService = new ExchangeService();
 
         try {
-            // 1. Setup Student A (Alice)
-            Student alice = studentService.getStudentByEmail("alice.main@university.edu")
+            // Setup two students
+            Student alice = studentService.getStudentByEmail("alice.phase6@university.edu")
                     .orElseGet(() -> {
                         try {
-                            return studentService.registerStudent("Alice Johnson", "alice.main@university.edu", "555-0101");
+                            return studentService.registerStudent("Alice Developer", "alice.phase6@university.edu", "555-6001");
                         } catch (SQLException e) {
                             throw new RuntimeException(e);
                         }
                     });
 
-            // 2. Setup Student B (Bob)
-            Student bob = studentService.getStudentByEmail("bob.main@university.edu")
+            Student bob = studentService.getStudentByEmail("bob.phase6@university.edu")
                     .orElseGet(() -> {
                         try {
-                            return studentService.registerStudent("Bob Smith", "bob.main@university.edu", "555-0102");
+                            return studentService.registerStudent("Bob Designer", "bob.phase6@university.edu", "555-6002");
                         } catch (SQLException e) {
                             throw new RuntimeException(e);
                         }
@@ -57,65 +56,81 @@ public class Main {
 
             System.out.println("[SETUP] Alice ID: " + alice.getStudentId() + " | Bob ID: " + bob.getStudentId());
 
-            // 3. Setup Alice's Skills (TEACH Java, LEARN UI/UX)
-            Skill aliceTeachJava = getOrAddSkill(skillService, alice.getStudentId(), "Java Programming", SkillType.TEACH, ProficiencyLevel.ADVANCED, "Core Java & OOP");
-            getOrAddSkill(skillService, alice.getStudentId(), "UI/UX Design", SkillType.LEARN, ProficiencyLevel.BEGINNER, "Figma");
+            // Setup Skills
+            Skill aliceJava = getOrAddSkill(skillService, alice.getStudentId(), "Java", SkillType.TEACH, ProficiencyLevel.ADVANCED, "Core Java");
+            Skill bobUI = getOrAddSkill(skillService, bob.getStudentId(), "UI/UX", SkillType.TEACH, ProficiencyLevel.ADVANCED, "Design Systems");
 
-            // 4. Setup Bob's Skills (TEACH UI/UX, LEARN Java)
-            Skill bobTeachUI = getOrAddSkill(skillService, bob.getStudentId(), "UI/UX Design", SkillType.TEACH, ProficiencyLevel.ADVANCED, "Wireframes & Prototypes");
-            getOrAddSkill(skillService, bob.getStudentId(), "Java Programming", SkillType.LEARN, ProficiencyLevel.BEGINNER, "Basics");
-
-            // 5. Test Rule: Reject Self-Request
-            System.out.println("\n--- Step 1: Testing Self-Request Prevention ---");
+            // 1. Create a fresh request
+            System.out.println("\n--- Step 1: Alice Sends Request to Bob ---");
+            SkillExchangeRequest request = null;
             try {
-                exchangeService.createRequest(alice.getStudentId(), alice.getStudentId(), aliceTeachJava.getSkillId(), aliceTeachJava.getSkillId());
-                System.err.println("[FAIL] Self-request was not blocked!");
-            } catch (IllegalArgumentException e) {
-                System.out.println("[SUCCESS] Expected exception caught: " + e.getMessage());
-            }
-
-            // 6. Test Rule: Reject Wrong Skill Ownership
-            System.out.println("\n--- Step 2: Testing Skill Ownership Validation ---");
-            try {
-                // Alice tries to offer Bob's skill!
-                exchangeService.createRequest(alice.getStudentId(), bob.getStudentId(), bobTeachUI.getSkillId(), bobTeachUI.getSkillId());
-                System.err.println("[FAIL] Unowned skill offering was not blocked!");
-            } catch (IllegalArgumentException e) {
-                System.out.println("[SUCCESS] Expected exception caught: " + e.getMessage());
-            }
-
-            // 7. Create Valid Exchange Request from Alice to Bob
-            System.out.println("\n--- Step 3: Creating Valid Skill Exchange Request ---");
-            try {
-                SkillExchangeRequest req = exchangeService.createRequest(
-                        alice.getStudentId(),
-                        bob.getStudentId(),
-                        aliceTeachJava.getSkillId(),
-                        bobTeachUI.getSkillId()
+                request = exchangeService.createRequest(
+                        alice.getStudentId(), bob.getStudentId(),
+                        aliceJava.getSkillId(), bobUI.getSkillId()
                 );
-                System.out.printf("[SUCCESS] Created Request #%d: Alice offers '%s' to Bob for '%s' (Status: %s)\n",
-                        req.getRequestId(), req.getOfferedSkillName(), req.getWantedSkillName(), req.getStatus());
+                System.out.printf("[SUCCESS] Created Request #%d (Status: %s)\n", request.getRequestId(), request.getStatus());
             } catch (IllegalArgumentException e) {
-                System.out.println("[INFO] " + e.getMessage());
+                // If already created, find the pending or accepted one
+                List<SkillExchangeRequest> list = exchangeService.getOutgoingRequests(alice.getStudentId());
+                if (!list.isEmpty()) {
+                    request = list.get(0);
+                    System.out.println("[INFO] Using existing Request #" + request.getRequestId() + " (Status: " + request.getStatus() + ")");
+                }
             }
 
-            // 8. View Alice's Outgoing Requests
-            System.out.println("\n--- Step 4: Alice's Outgoing Requests ---");
-            List<SkillExchangeRequest> outgoing = exchangeService.getOutgoingRequests(alice.getStudentId());
-            System.out.println(exchangeService.formatRequestTable(outgoing, false));
+            if (request != null) {
+                int reqId = request.getRequestId();
 
-            // 9. View Bob's Incoming Requests
-            System.out.println("--- Step 5: Bob's Incoming Requests ---");
-            List<SkillExchangeRequest> incoming = exchangeService.getIncomingRequests(bob.getStudentId());
-            System.out.println(exchangeService.formatRequestTable(incoming, true));
+                // 2. Unauthorized Accept attempt: Alice tries to accept her own outgoing request!
+                System.out.println("\n--- Step 2: Testing Unauthorized Accept Prevention ---");
+                try {
+                    exchangeService.acceptRequest(alice.getStudentId(), reqId);
+                    System.err.println("[FAIL] Requester was able to accept their own request!");
+                } catch (SecurityException e) {
+                    System.out.println("[SUCCESS] Expected exception caught: " + e.getMessage());
+                }
+
+                // 3. Bob accepts the request
+                System.out.println("\n--- Step 3: Receiver (Bob) Accepts the Request ---");
+                if (request.getStatus() == com.skillswap.model.RequestStatus.PENDING) {
+                    SkillExchangeRequest accepted = exchangeService.acceptRequest(bob.getStudentId(), reqId);
+                    System.out.printf("[SUCCESS] Bob accepted Request #%d! New Status: %s\n", accepted.getRequestId(), accepted.getStatus());
+                    request = accepted;
+                } else {
+                    System.out.println("[INFO] Request status is already: " + request.getStatus());
+                }
+
+                // 4. Marking exchange as COMPLETED
+                System.out.println("\n--- Step 4: Completing the Exchange ---");
+                if (request.getStatus() == com.skillswap.model.RequestStatus.ACCEPTED) {
+                    SkillExchangeRequest completed = exchangeService.completeExchange(alice.getStudentId(), reqId);
+                    System.out.printf("[SUCCESS] Alice marked exchange #%d as COMPLETED! New Status: %s\n",
+                            completed.getRequestId(), completed.getStatus());
+                    request = completed;
+                }
+
+                // 5. Attempting to cancel COMPLETED request must fail
+                System.out.println("\n--- Step 5: Testing Cancellation Rule on COMPLETED Request ---");
+                try {
+                    exchangeService.cancelRequest(alice.getStudentId(), reqId);
+                    System.err.println("[FAIL] Completed request was cancelled!");
+                } catch (IllegalStateException e) {
+                    System.out.println("[SUCCESS] Expected exception caught: " + e.getMessage());
+                }
+
+                // 6. View final status table
+                System.out.println("\n--- Step 6: Alice's Final Outgoing Request Status ---");
+                List<SkillExchangeRequest> outgoing = exchangeService.getOutgoingRequests(alice.getStudentId());
+                System.out.println(exchangeService.formatRequestTable(outgoing, false));
+            }
 
             System.out.println("--------------------------------------------------");
-            System.out.println("Phase 5 Verification Complete!");
-            System.out.println("Ready for Phase 6 (Request Lifecycle: Accept, Reject, Cancel, Complete).");
+            System.out.println("Phase 6 Verification Complete!");
+            System.out.println("Ready for Phase 7 (Smart Skill Matching and Aggregate Reports).");
             System.out.println("--------------------------------------------------");
 
         } catch (SQLException e) {
-            System.err.println("Database error during Phase 5 demonstration: " + e.getMessage());
+            System.err.println("Database error during Phase 6 demonstration: " + e.getMessage());
         } finally {
             DatabaseConnection.shutdown();
         }

@@ -113,6 +113,131 @@ public class ExchangeService {
     }
 
     /**
+     * Allows the receiver of an exchange request to ACCEPT a PENDING request.
+     * 
+     * @param currentStudentId The logged-in student (must be the receiver)
+     * @param requestId The ID of the request to accept
+     * @return The updated SkillExchangeRequest with ACCEPTED status
+     */
+    public SkillExchangeRequest acceptRequest(int currentStudentId, int requestId) throws SQLException {
+        SkillExchangeRequest req = getValidRequest(requestId);
+
+        if (req.getReceiverId() != currentStudentId) {
+            throw new SecurityException("Unauthorized: Only the receiver (" + 
+                    (req.getReceiverName() != null ? req.getReceiverName() : "Student #" + req.getReceiverId()) + 
+                    ") can accept this request.");
+        }
+
+        if (req.getStatus() != RequestStatus.PENDING) {
+            throw new IllegalStateException("Cannot accept request #" + requestId + 
+                    ": Current status is " + req.getStatus() + ". Only PENDING requests can be accepted.");
+        }
+
+        boolean updated = requestDAO.updateRequestStatus(requestId, RequestStatus.ACCEPTED, RequestStatus.PENDING);
+        if (!updated) {
+            throw new IllegalStateException("Failed to accept request: The status may have been concurrently modified.");
+        }
+
+        return requestDAO.findRequestById(requestId).orElseThrow();
+    }
+
+    /**
+     * Allows the receiver of an exchange request to REJECT a PENDING request.
+     * 
+     * @param currentStudentId The logged-in student (must be the receiver)
+     * @param requestId The ID of the request to reject
+     * @return The updated SkillExchangeRequest with REJECTED status
+     */
+    public SkillExchangeRequest rejectRequest(int currentStudentId, int requestId) throws SQLException {
+        SkillExchangeRequest req = getValidRequest(requestId);
+
+        if (req.getReceiverId() != currentStudentId) {
+            throw new SecurityException("Unauthorized: Only the receiver (" + 
+                    (req.getReceiverName() != null ? req.getReceiverName() : "Student #" + req.getReceiverId()) + 
+                    ") can reject this request.");
+        }
+
+        if (req.getStatus() != RequestStatus.PENDING) {
+            throw new IllegalStateException("Cannot reject request #" + requestId + 
+                    ": Current status is " + req.getStatus() + ". Only PENDING requests can be rejected.");
+        }
+
+        boolean updated = requestDAO.updateRequestStatus(requestId, RequestStatus.REJECTED, RequestStatus.PENDING);
+        if (!updated) {
+            throw new IllegalStateException("Failed to reject request: The status may have been concurrently modified.");
+        }
+
+        return requestDAO.findRequestById(requestId).orElseThrow();
+    }
+
+    /**
+     * Allows the requester of an exchange request to CANCEL a PENDING or ACCEPTED request.
+     * 
+     * @param currentStudentId The logged-in student (must be the requester)
+     * @param requestId The ID of the request to cancel
+     * @return The updated SkillExchangeRequest with CANCELLED status
+     */
+    public SkillExchangeRequest cancelRequest(int currentStudentId, int requestId) throws SQLException {
+        SkillExchangeRequest req = getValidRequest(requestId);
+
+        if (req.getRequesterId() != currentStudentId) {
+            throw new SecurityException("Unauthorized: Only the requester (" + 
+                    (req.getRequesterName() != null ? req.getRequesterName() : "Student #" + req.getRequesterId()) + 
+                    ") can cancel this request.");
+        }
+
+        if (req.getStatus() != RequestStatus.PENDING && req.getStatus() != RequestStatus.ACCEPTED) {
+            throw new IllegalStateException("Cannot cancel request #" + requestId + 
+                    ": Current status is " + req.getStatus() + ". Only PENDING or ACCEPTED requests can be cancelled.");
+        }
+
+        boolean updated = requestDAO.updateRequestStatus(requestId, RequestStatus.CANCELLED, req.getStatus());
+        if (!updated) {
+            throw new IllegalStateException("Failed to cancel request: The status may have been concurrently modified.");
+        }
+
+        return requestDAO.findRequestById(requestId).orElseThrow();
+    }
+
+    /**
+     * Allows either participant (requester or receiver) to mark an ACCEPTED exchange as COMPLETED.
+     * 
+     * @param currentStudentId The logged-in student (must be requester or receiver)
+     * @param requestId The ID of the request to complete
+     * @return The updated SkillExchangeRequest with COMPLETED status
+     */
+    public SkillExchangeRequest completeExchange(int currentStudentId, int requestId) throws SQLException {
+        SkillExchangeRequest req = getValidRequest(requestId);
+
+        if (req.getRequesterId() != currentStudentId && req.getReceiverId() != currentStudentId) {
+            throw new SecurityException("Unauthorized: You must be a participant in the exchange to mark it as completed.");
+        }
+
+        if (req.getStatus() != RequestStatus.ACCEPTED) {
+            throw new IllegalStateException("Cannot complete exchange #" + requestId + 
+                    ": Current status is " + req.getStatus() + ". Only ACCEPTED requests can be marked as COMPLETED.");
+        }
+
+        boolean updated = requestDAO.updateRequestStatus(requestId, RequestStatus.COMPLETED, RequestStatus.ACCEPTED);
+        if (!updated) {
+            throw new IllegalStateException("Failed to complete exchange: The status may have been concurrently modified.");
+        }
+
+        return requestDAO.findRequestById(requestId).orElseThrow();
+    }
+
+    /**
+     * Helper to retrieve and validate request existence.
+     */
+    private SkillExchangeRequest getValidRequest(int requestId) throws SQLException {
+        Optional<SkillExchangeRequest> reqOpt = requestDAO.findRequestById(requestId);
+        if (reqOpt.isEmpty()) {
+            throw new IllegalArgumentException("Exchange request not found with ID: " + requestId);
+        }
+        return reqOpt.get();
+    }
+
+    /**
      * Retrieves an exchange request by its primary key ID.
      */
     public Optional<SkillExchangeRequest> getRequestById(int requestId) throws SQLException {
